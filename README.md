@@ -8,9 +8,11 @@ I can change anything.
 ##Usage
 
 ```Lua
-Parallel.For(1, 100, [[TASK(function(i)
-  --do some work
-end)]])
+local T = string.dump
+
+Parallel.For(1, 100, T(function(thread_no)
+  TASK(function(i) print(thread_no .. " :" .. i) end)
+end))
 ```
 
 [Parallel hash calculation](/examples/hash.lua)

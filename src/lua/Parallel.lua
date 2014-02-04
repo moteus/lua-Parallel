@@ -78,7 +78,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
   local cache   = {} -- заранее рассчитанные данные для заданий
   local threads = {} -- рабочие потоки
 
-  local MAX_CACHE = cache_size or 1
+  local MAX_CACHE = cache_size or N
 
   local function call_src()
     if src and not src_err then
@@ -150,7 +150,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
   loop:add_interval(100, function(ev) cache_src() end)
 
   for i = 1, N do 
-    local thread = loop:add_thread(code)
+    local thread = loop:add_thread(code, i)
     thread:start(true, true)
     threads[#threads + 1] = thread
   end
