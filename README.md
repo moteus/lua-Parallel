@@ -14,4 +14,3 @@ end)]])
 ```
 
 [Parallel hash calculation](/examples/hash.lua)
-

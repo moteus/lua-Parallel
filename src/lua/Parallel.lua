@@ -75,8 +75,8 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
     return zthreads.run(self:context(), code, ... )
   end
 
-  local cache   = {} -- заранее рассчитанные данные для заданий
-  local threads = {} -- рабочие потоки
+  local cache   = {} -- Р·Р°СЂР°РЅРµРµ СЂР°СЃСЃС‡РёС‚Р°РЅРЅС‹Рµ РґР°РЅРЅС‹Рµ РґР»СЏ Р·Р°РґР°РЅРёР№
+  local threads = {} -- СЂР°Р±РѕС‡РёРµ РїРѕС‚РѕРєРё
 
   local MAX_CACHE = cache_size or 1
 
@@ -92,14 +92,12 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
     end
   end
 
-  -- возвращаем данные для нового задания
   local function next_src()
     local args = table.remove(cache, 1)
     if args then return args end
     return call_src()
   end
 
-  -- вызываем MAX_CACHE итераторов заранее
   local function cache_src()
     if #cache >= MAX_CACHE then return end
     for i = #cache, MAX_CACHE do
@@ -132,7 +130,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
     local args, err = next_src()
 
-    if args ~= nil then -- очередное задания
+    if args ~= nil then
       skt:sendx(identity, tid, 'TASK', args)
       return
     end
