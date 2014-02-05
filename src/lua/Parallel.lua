@@ -225,6 +225,18 @@ local function ForEach(it, code, snk, N, C)
   return parallel_for_impl(code, src, snk, N, C)
 end
 
+local function Invoke(N, ...)
+  local code = string.dump(function() TASK(function(_,src)
+    if src:sub(1,1) == '@' then dofile(src:sub(2))
+    else assert((loadstring or load)(src))() end
+  end) end)
+  
+  if type(N) == 'number' then
+    return ForEach({...}, code, N)
+  end
+  return ForEach({N, ...}, code)
+end
+
 local Parallel = {} do
 Parallel.__index = Parallel
 
@@ -236,12 +248,6 @@ function Parallel:new(N)
   return o
 end
 
----
--- @tparam[number] be begin index
--- @tparam[number] en end index
--- @tparam[number?] step step
--- @tparam[string] code
--- @tparam[callable?] snk sink
 function Parallel:For(be, en, step, code, snk)
   return For(be, en, step, code, snk, self.thread_count, self.cache_size)
 end
@@ -250,10 +256,15 @@ function Parallel:ForEach(src, code, snk)
   return ForEach(src, code, snk, self.thread_count, self.cache_size)
 end
 
+function Parallel:Invoke(...)
+  return ForEach(self.thread_count, ...)
+end
+
 end
 
 return {
   For = For;
   ForEach = ForEach;
+  Invoke = Invoke;
   New = function(...) return Parallel:new(...) end
 }
