@@ -20,3 +20,5 @@ end), print)
 ```
 
 [Parallel hash calculation](/examples/hash.lua)
+
+[Parallel ping hosts in network](/examples/pingnet.lua)
