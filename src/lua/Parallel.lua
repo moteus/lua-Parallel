@@ -258,7 +258,7 @@ function Parallel:ForEach(src, code, snk)
 end
 
 function Parallel:Invoke(...)
-  return ForEach(self.thread_count, ...)
+  return Invoke(self.thread_count, ...)
 end
 
 end
