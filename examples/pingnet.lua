@@ -50,7 +50,7 @@ local PING_THREAD = string.dump(function()
     return retAlive
   end
 
-  TASK(function(ip, n) return ip, WinPing(ip, n) end)
+  FOR(function(ip, n) return ip, WinPing(ip, n) end)
 end)
 
 Parallel.ForEach(NextIP(NET), PING_THREAD, PingDone, THREADS)

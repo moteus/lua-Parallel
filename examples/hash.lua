@@ -8,7 +8,7 @@ local RECURSE = true
 local HASH_FILE = string.dump(function()
   require "digest"
   local CHUNK_SIZE = 4096
-  TASK(function(fname)
+  FOR(function(fname)
     local f, err = io.open(fname,"rb")
     if not f then return fname, nil, err end
     local d = md5.new()

@@ -13,7 +13,7 @@ local THREAD_STARTER = [[
   local mp       = require "cmsgpack"
   local zassert  = zmq.assert
 
-  function TASK(do_work)
+  function FOR(do_work)
     local ctx      = zthreads.get_parent_ctx()
 
     local s, err   = ctx:socket{zmq.DEALER, connect = ENDPOINT}
@@ -226,7 +226,7 @@ local function ForEach(it, code, snk, N, C)
 end
 
 local function Invoke(N, ...)
-  local code = string.dump(function() TASK(function(_,src)
+  local code = string.dump(function() FOR(function(_,src)
     if src:sub(1,1) == '@' then dofile(src:sub(2))
     else assert((loadstring or load)(src))() end
   end) end)
