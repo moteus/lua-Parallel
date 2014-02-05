@@ -65,15 +65,10 @@ end
 local function parallel_for_impl(code, src, snk, N, cache_size)
   N = N or 4
 
+  -- @fixme do not change global state in zthreads library
   zthreads.set_bootstrap_prelude(THREAD_STARTER)
 
   local src_err, snk_err
-
-  local loop = zloop.new()
-
-  function loop:add_thread(code, ...)
-    return zthreads.run(self:context(), code, ... )
-  end
 
   local cache   = {} -- заранее рассчитанные данные для заданий
   local threads = {} -- рабочие потоки
@@ -105,6 +100,8 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
       if args then cache[#cache + 1] = args else break end
     end
   end
+
+  local loop = zloop.new()
 
   local skt, err = loop:create_socket{zmq.ROUTER, bind = ENDPOINT}
   zassert(skt, err)
@@ -149,11 +146,15 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
   loop:add_interval(100, function(ev) cache_src() end)
 
+  local err
   for i = 1, N do 
-    local thread = loop:add_thread(code, i)
-    thread:start(true, true)
-    threads[#threads + 1] = thread
+    local thread
+    thread, err = zthreads.run(loop:context(), code, i)
+    if thread and thread:start(true, true) then
+      threads[#threads + 1] = thread
+    end
   end
+  if #threads == 0 then return nil, err end
 
   loop:start()
 
