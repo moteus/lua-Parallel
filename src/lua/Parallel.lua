@@ -137,11 +137,10 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
   -- watchdog
   loop:add_interval(1000, function()
-    local alive = 0
-    for _, thread in ipairs(threads) do 
-      if thread_alive(thread) then alive = alive + 1 end
+    for _, thread in ipairs(threads) do
+      if thread_alive(thread) then return end
     end
-    if alive == 0 then loop:interrupt() end
+    loop:interrupt()
   end)
 
   loop:add_interval(100, function(ev) cache_src() end)
