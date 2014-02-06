@@ -17,7 +17,7 @@ local THREAD_STARTER = [[
     local ctx      = zthreads.get_parent_ctx()
 
     local s, err   = ctx:socket{zmq.DEALER, connect = ENDPOINT, linger = 0}
-    if not s then return end
+    if not s then return nil, err end
 
     s:sendx(0, 'READY')
     while not s:closed() do
@@ -62,17 +62,25 @@ local function thread_alive(self)
   return nil, err
 end
 
-local function parallel_for_impl(code, src, snk, N, cache_size)
+local function clone_context(src)
+  local h = src:lightuserdata()
+  return zmq.init_ctx(h)
+end
+
+local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   N = N or 4
 
   -- @fixme do not change global state in zthreads library
   zthreads.set_bootstrap_prelude(THREAD_STARTER)
+
+  if ctx then ctx = clone_context(ctx) end
 
   local src_err, snk_err
 
   local cache   = {} -- заранее рассчитанные данные для заданий
   local threads = {} -- рабочие потоки
   local reqs    = 0
+  local ready   = 0
 
   local MAX_CACHE = cache_size or N
 
@@ -102,7 +110,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
     end
   end
 
-  local loop = zloop.new()
+  local loop = zloop.new(1, ctx)
 
   local skt, err = loop:create_socket{zmq.ROUTER, bind = ENDPOINT, linger = 0}
   zassert(skt, err)
@@ -111,7 +119,9 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
     local identity, tid, cmd, args = skt:recvx()
     zassert(tid, cmd)
 
-    if cmd ~= 'READY' then
+    if cmd == 'READY' then
+      ready = ready + 1
+    else
       assert(cmd == 'RESP')
       assert(reqs > 0)
       reqs = reqs - 1
@@ -138,7 +148,12 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
     skt:sendx(identity, tid, 'END')
 
-    if reqs == 0 then loop:interrupt() end
+    if reqs == 0 then
+      -- we have clone of context so ctx:destroy() 
+      -- does not destroy real context and we need
+      -- send `END` to all threads
+      if (not ctx) or (ready == #threads) then loop:interrupt() end
+    end
   end)
 
   -- watchdog
@@ -174,15 +189,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
   return true
 end
 
----
--- @tparam[number] be begin index
--- @tparam[number] en end index
--- @tparam[number?] step step
--- @tparam[string] code
--- @tparam[callable?] snk sink
--- @tparam[number?] N thread count
--- @tparam[number?] C cache size
-local function For(be, en, step, code, snk, N, C)
+local function For_impl(ctx, be, en, step, code, snk, N, C)
   if type(step) ~= 'number' then -- no step
     step, code, snk, N, C = 1, step, code, snk, N
   end
@@ -203,15 +210,22 @@ local function For(be, en, step, code, snk, N, C)
     return n
   end
 
-  return parallel_for_impl(code, src, snk, N, C)
+  return parallel_for_impl(ctx, code, src, snk, N, C)
 end
 
 ---
+-- @tparam[number] be begin index
+-- @tparam[number] en end index
+-- @tparam[number?] step step
 -- @tparam[string] code
 -- @tparam[callable?] snk sink
 -- @tparam[number?] N thread count
 -- @tparam[number?] C cache size
-local function ForEach(it, code, snk, N, C)
+local function For(...)
+  return For_impl(nil, ...)
+end
+
+local function ForEach_impl(ctx, it, code, snk, N, C)
   local src = it
   if type(it) == 'table' then
     local k, v
@@ -228,27 +242,41 @@ local function ForEach(it, code, snk, N, C)
   assert(type(src)  == "function")
   assert(type(code) == "string")
 
-  return parallel_for_impl(code, src, snk, N, C)
+  return parallel_for_impl(ctx, code, src, snk, N, C)
 end
 
-local function Invoke(N, ...)
+---
+-- @tparam[string] code
+-- @tparam[callable?] snk sink
+-- @tparam[number?] N thread count
+-- @tparam[number?] C cache size
+local function ForEach(...)
+  return ForEach_impl(nil, ...)
+end
+
+local function Invoke_impl(ctx, N, ...)
   local code = string.dump(function() FOR(function(_,src)
-    if src:sub(1,1) == '@' then dofile(src:sub(2))
+    if src:sub(1,1) == '@' then dofile((src:sub(2)))
     else assert((loadstring or load)(src))() end
   end) end)
   
   if type(N) == 'number' then
     return ForEach({...}, code, N)
   end
-  return ForEach({N, ...}, code)
+  return ForEach_impl(ctx, {N, ...}, code)
+end
+
+local function Invoke(...)
+  return Invoke_impl(nil, ...)
 end
 
 local Parallel = {} do
 Parallel.__index = Parallel
 
 function Parallel:new(N)
-  local o = setmetatable({ 
+  local o = setmetatable({
     thread_count = N or 4;
+    context = zassert(zmq.context());
   }, self)
   o.cache_size = o.thread_count * 2
   return o
@@ -266,11 +294,17 @@ function Parallel:Invoke(...)
   return Invoke(self.thread_count, ...)
 end
 
+function Parallel:destroy(...)
+  self.context:destroy()
+  self.context = nil
+  return true
+end
+
 end
 
 return {
-  For = For;
+  For     = For;
   ForEach = ForEach;
-  Invoke = Invoke;
+  Invoke  = Invoke;
   New = function(...) return Parallel:new(...) end
 }
