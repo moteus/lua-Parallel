@@ -16,7 +16,7 @@ local THREAD_STARTER = [[
   function FOR(do_work)
     local ctx      = zthreads.get_parent_ctx()
 
-    local s, err   = ctx:socket{zmq.DEALER, connect = ENDPOINT}
+    local s, err   = ctx:socket{zmq.DEALER, connect = ENDPOINT, linger = 0}
     if not s then return end
 
     s:sendx(0, 'READY')
@@ -72,6 +72,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
   local cache   = {} -- заранее рассчитанные данные для заданий
   local threads = {} -- рабочие потоки
+  local reqs    = 0
 
   local MAX_CACHE = cache_size or N
 
@@ -103,7 +104,7 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
   local loop = zloop.new()
 
-  local skt, err = loop:create_socket{zmq.ROUTER, bind = ENDPOINT}
+  local skt, err = loop:create_socket{zmq.ROUTER, bind = ENDPOINT, linger = 0}
   zassert(skt, err)
 
   loop:add_socket(skt, function(skt)
@@ -112,6 +113,8 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
     if cmd ~= 'READY' then
       assert(cmd == 'RESP')
+      assert(reqs > 0)
+      reqs = reqs - 1
       if not snk_err then
         if snk then
           local ok, err = ppcall(snk, mp.unpack(args))
@@ -129,10 +132,13 @@ local function parallel_for_impl(code, src, snk, N, cache_size)
 
     if args ~= nil then
       skt:sendx(identity, tid, 'TASK', args)
+      reqs = reqs + 1
       return
     end
 
     skt:sendx(identity, tid, 'END')
+
+    if reqs == 0 then loop:interrupt() end
   end)
 
   -- watchdog
