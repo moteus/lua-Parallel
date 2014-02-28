@@ -25,6 +25,7 @@ install:
     else
       sudo luarocks install lzmq;
     fi
+  - luarocks make rockspecs/parallel-scm-0.rockspec
 
 script: 
   - cd test 
