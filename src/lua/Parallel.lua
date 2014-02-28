@@ -1,10 +1,29 @@
+--- Basic parallel for loops
+--
+-- @module Parallel
+--
+-- @usage
+-- local T = string.dump
+--
+-- Parallel.For(1, 100, T(function(thread_no)
+--   FOR(function(i) print(thread_no .. " :" .. i) end)
+-- end))
+--
+-- Parallel.For(1, 100, T(function(thread_no)
+--   FOR(function(i) return thread_no, math.pow(i, 2), math.sqrt(i) end)
+-- end), print)
+--
+-- Parallel.Invoke('print(1)','print(2)','print(3)')
+--
+
+
 local zmq      = require "lzmq"
 local zloop    = require "lzmq.loop"
 local zthreads = require "lzmq.threads"
 local mp       = require "cmsgpack"
 local zassert  = zmq.assert
 
-local ENDPOINT = "inproc://main"
+local ENDPOINT = "inproc://parallel.main"
 
 local THREAD_STARTER = [[
   local ENDPOINT = ]] .. ("%q"):format(ENDPOINT) .. [[
@@ -213,14 +232,15 @@ local function For_impl(ctx, be, en, step, code, snk, N, C)
   return parallel_for_impl(ctx, code, src, snk, N, C)
 end
 
----
--- @tparam[number] be begin index
--- @tparam[number] en end index
--- @tparam[number?] step step
--- @tparam[string] code
--- @tparam[callable?] snk sink
--- @tparam[number?] N thread count
--- @tparam[number?] C cache size
+--- Implement for loop
+--
+-- @tparam number beginIndex begin index (inclusive)
+-- @tparam number endIndex end index (inclusive)
+-- @tparam[opt] number step step
+-- @tparam string body it may be Lua compiled or raw chunk
+-- @tparam[opt] callable sink this function callect all returned values from each iteration
+-- @tparam[opt] number N thread count
+-- @tparam[opt] number C cache size
 local function For(...)
   return For_impl(nil, ...)
 end
@@ -245,11 +265,13 @@ local function ForEach_impl(ctx, it, code, snk, N, C)
   return parallel_for_impl(ctx, code, src, snk, N, C)
 end
 
----
--- @tparam[string] code
--- @tparam[callable?] snk sink
--- @tparam[number?] N thread count
--- @tparam[number?] C cache size
+--- Implement iterator loop
+--
+-- @tparam [table | iteration] iteration range
+-- @tparam string body it may be Lua compiled or raw chunk
+-- @tparam[opt] callable sink this function callect all returned values from each iteration
+-- @tparam[opt] number N thread count
+-- @tparam[opt] number C cache size
 local function ForEach(...)
   return ForEach_impl(nil, ...)
 end
@@ -266,19 +288,24 @@ local function Invoke_impl(ctx, N, ...)
   return ForEach_impl(ctx, {N, ...}, code)
 end
 
+--- Implement parallel invokation of lua chunks
+--
+-- @tparam string,... body it may be Lua compiled or raw chunk
 local function Invoke(...)
   return Invoke_impl(nil, ...)
 end
 
+--- Implement `Parallel` class
+--
 local Parallel = {} do
 Parallel.__index = Parallel
 
-function Parallel:new(N)
+function Parallel:new(N, C)
   local o = setmetatable({
     thread_count = N or 4;
     context = zassert(zmq.context());
   }, self)
-  o.cache_size = o.thread_count * 2
+  o.cache_size = C or o.thread_count * 2
   return o
 end
 
@@ -306,5 +333,5 @@ return {
   For     = For;
   ForEach = ForEach;
   Invoke  = Invoke;
-  New = function(...) return Parallel:new(...) end
+  New     = function(...) return Parallel:new(...) end
 }
