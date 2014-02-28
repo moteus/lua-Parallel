@@ -38,7 +38,7 @@ local THREAD_STARTER = [[
     local s, err   = ctx:socket{zmq.DEALER, connect = ENDPOINT, linger = 0}
     if not s then return nil, err end
 
-    s:sendx(0, 'READY')
+    s:sendx('0', 'READY')
     while not s:closed() do
       local tid, cmd, args = s:recvx()
       if not tid then
