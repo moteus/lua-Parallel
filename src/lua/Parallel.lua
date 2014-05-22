@@ -23,14 +23,22 @@ local zthreads = require "lzmq.threads"
 local mp       = require "cmsgpack"
 local zassert  = zmq.assert
 
-local ENDPOINT = "inproc://parallel.main"
-
-local THREAD_STARTER = [[
-  local ENDPOINT = ]] .. ("%q"):format(ENDPOINT) .. [[
+local THREAD_STARTER = string.dump(function(ENDPOINT, code, ...)
   local zmq      = require "lzmq"
   local zthreads = require "lzmq.threads"
   local mp       = require "cmsgpack"
   local zassert  = zmq.assert
+
+  local function arg_unpack(t)
+    return mp.unpack(t)
+  end
+
+  local function arg_pack(...)
+    if select("#", ...) == 0 then
+      return ""
+    end
+    return mp.pack(...)
+  end
 
   function FOR(do_work)
     local ctx      = zthreads.get_parent_ctx()
@@ -52,13 +60,19 @@ local THREAD_STARTER = [[
       assert(cmd == 'TASK', "invalid command " .. tostring(cmd))
       assert(args, "invalid args in command")
 
-      local res, err = mp.pack( do_work(mp.unpack(args)) )
+      local res, err = arg_pack( do_work(arg_unpack(args)) )
       s:sendx(tid, 'RESP', res)
     end
 
     ctx:destroy()
   end
-]]
+
+  if code:sub(1,1) == '@' then
+    return assert(loadfile(code:sub(2)))(...)
+  end
+
+  return assert(loadstring(code))(...)
+end)
 
 local function pcall_ret_pack(ok, ...)
   if ok then return mp.pack(ok, ...) end
@@ -74,13 +88,6 @@ local function ppcall(...)
   return pcall_ret(pcall(...))
 end
 
-local function thread_alive(self)
-  local ok, err = self:join(0)
-  if ok then return false end
-  if err == 'timeout' then return true end
-  return nil, err
-end
-
 local function clone_context(src)
   local h = src:lightuserdata()
   return zmq.init_ctx(h)
@@ -88,9 +95,6 @@ end
 
 local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   N = N or 4
-
-  -- @fixme do not change global state in zthreads library
-  zthreads.set_bootstrap_prelude(THREAD_STARTER)
 
   if ctx then ctx = clone_context(ctx) end
 
@@ -131,8 +135,14 @@ local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
 
   local loop = zloop.new(1, ctx)
 
-  local skt, err = loop:create_socket{zmq.ROUTER, bind = ENDPOINT, linger = 0}
+  local ENDPOINT = "inproc://parallel.main."
+
+  local skt, err = loop:create_socket{zmq.ROUTER, linger = 0}
   zassert(skt, err)
+
+  ENDPOINT = ENDPOINT .. string.format("%X", skt:fd())
+  local ok, err = skt:bind(ENDPOINT)
+  zassert(ok, err)
 
   loop:add_socket(skt, function(skt)
     local identity, tid, cmd, args = skt:recvx()
@@ -178,7 +188,7 @@ local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   -- watchdog
   loop:add_interval(1000, function()
     for _, thread in ipairs(threads) do
-      if thread_alive(thread) then return end
+      if thread:alive() then return end
     end
     loop:interrupt()
   end)
@@ -188,7 +198,7 @@ local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   local err
   for i = 1, N do 
     local thread
-    thread, err = zthreads.run(loop:context(), code, i)
+    thread, err = zthreads.run(loop:context(), THREAD_STARTER, ENDPOINT, code, i)
     if thread and thread:start(true, true) then
       threads[#threads + 1] = thread
     end
