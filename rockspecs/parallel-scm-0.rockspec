@@ -14,7 +14,7 @@ description = {
 
 dependencies = {
   "lua >= 5.1, < 5.3",
-  "lua-llthreads2", -- or "lua-llthreads2-compat"
+  "lua-llthreads2 >= 0.1.1",
   "lua-cmsgpack",
   -- "lzmq" or "lzmq-ffi"
 }
