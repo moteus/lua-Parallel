@@ -94,6 +94,8 @@ local function clone_context(src)
 end
 
 local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
+  assert(type(code) == "string")
+
   N = N or 4
 
   if ctx then ctx = clone_context(ctx) end
@@ -218,28 +220,33 @@ local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   return true
 end
 
-local function For_impl(ctx, be, en, step, code, snk, N, C)
-  if type(step) ~= 'number' then -- no step
-    step, code, snk, N, C = 1, step, code, snk, N
-  end
-
-  if type(snk) == 'number' then -- no sink
-    N, C = snk, N
-  end
-
+local function make_n_iter(be, en, step)
   assert(type(be)   == "number")
   assert(type(en)   == "number")
   assert(type(step) == "number")
-  assert(type(code) == "string")
 
-  local src = function()
-    if be > en then return end
+  return function()
     local n = be
+    if n > en then return end
     be = be + step
+    if n > en then return end
     return n
   end
+end
 
-  return parallel_for_impl(ctx, code, src, snk, N, C)
+local function wrap_iter(it)
+  -- @fixme Use __call/__pairs metamethods?
+
+  if type(it) == 'table' then
+    local k, v
+    return function()
+      k, v = next(it, k)
+      return k, v
+    end
+  end
+
+  assert(it) -- `it` must be callable
+  return it
 end
 
 --- Implement for loop
@@ -251,39 +258,34 @@ end
 -- @tparam[opt] callable sink this function callect all returned values from each iteration
 -- @tparam[opt] number N thread count
 -- @tparam[opt] number C cache size
-local function For(...)
-  return For_impl(nil, ...)
-end
-
-local function ForEach_impl(ctx, it, code, snk, N, C)
-  local src = it
-  if type(it) == 'table' then
-    local k, v
-    src = function()
-      k, v = next(it, k)
-      return k, v
-    end
+local function For(be, en, step, code, snk, N, C)
+  if type(step) ~= 'number' then -- no step
+    assert(C == nil)
+    step, code, snk, N, C = 1, step, code, snk, N
   end
 
   if type(snk) == 'number' then -- no sink
+    assert(C == nil)
     snk, N, C = nil, snk, N
   end
 
-  assert(type(src)  == "function")
-  assert(type(code) == "string")
-
-  return parallel_for_impl(ctx, code, src, snk, N, C)
+  return parallel_for_impl(nil, code, make_n_iter(be, en, step), snk, N, C)
 end
 
 --- Implement iterator loop
 --
--- @tparam [table | iteration] iteration range
+-- @tparam [table | iterator] iteration range
 -- @tparam string body it may be Lua compiled or raw chunk
 -- @tparam[opt] callable sink this function callect all returned values from each iteration
 -- @tparam[opt] number N thread count
 -- @tparam[opt] number C cache size
-local function ForEach(...)
-  return ForEach_impl(nil, ...)
+local function ForEach(it, code, snk, N, C)
+  if type(snk) == 'number' then -- no sink
+    assert(C == nil)
+    snk, N, C = nil, snk, N
+  end
+
+  return parallel_for_impl(code, wrap_iter(it), snk, N, C)
 end
 
 local function Invoke_impl(ctx, N, ...)
@@ -316,15 +318,21 @@ function Parallel:new(N, C)
     context = zassert(zmq.context());
   }, self)
   o.cache_size = C or o.thread_count * 2
+  
   return o
 end
 
 function Parallel:For(be, en, step, code, snk)
-  return For(be, en, step, code, snk, self.thread_count, self.cache_size)
+  if type(step) ~= 'number' then -- no step
+    assert(snk == nil)
+    step, code, snk = 1, step, code
+  end
+
+  return parallel_for_impl(self.context, code, make_n_iter(be, en, step), snk, self.thread_count, self.cache_size)
 end
 
-function Parallel:ForEach(src, code, snk)
-  return ForEach(src, code, snk, self.thread_count, self.cache_size)
+function Parallel:ForEach(it, code, snk)
+  return parallel_for_impl(self.context, code, wrap_iter(it), snk, self.thread_count, self.cache_size)
 end
 
 function Parallel:Invoke(...)
