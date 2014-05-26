@@ -18,6 +18,11 @@ before_install:
   - bash .travis/setup_zmq.sh
 
 install:
+  - git clone https://github.com/moteus/lua-cmsgpack.git
+  - cd lua-cmsgpack
+  - git checkout add-streaming-and-refactor-and-tests
+  - sudo luarocks make rockspec/lua-cmsgpack-scm-1.rockspec
+  - cd $TRAVIS_BUILD_DIR
   - sudo luarocks install lua-llthreads2
   - if [ $LUA = "luajit" ]; then
       sudo luarocks install https://raw2.github.com/justincormack/ljsyscall/master/rockspec/ljsyscall-0.9-1.rockspec;
@@ -35,3 +40,4 @@ notifications:
   email:
     on_success: change
     on_failure: always
+
