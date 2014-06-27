@@ -88,17 +88,10 @@ local function ppcall(...)
   return pcall_ret(pcall(...))
 end
 
-local function clone_context(src)
-  local h = src:lightuserdata()
-  return zmq.init_ctx(h)
-end
-
 local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   assert(type(code) == "string")
 
   N = N or 4
-
-  if ctx then ctx = clone_context(ctx) end
 
   local src_err, snk_err
 
@@ -144,6 +137,7 @@ local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
 
   ENDPOINT = ENDPOINT .. string.format("%X", skt:fd())
   local ok, err = skt:bind(ENDPOINT)
+  if not ok then skt:close() end
   zassert(ok, err)
 
   loop:add_socket(skt, function(skt)
@@ -201,7 +195,7 @@ local function parallel_for_impl(ctx, code, src, snk, N, cache_size)
   for i = 1, N do 
     local thread
     thread, err = zthreads.run(loop:context(), THREAD_STARTER, ENDPOINT, code, i)
-    if thread and thread:start(true, true) then
+    if thread and thread:start() then
       threads[#threads + 1] = thread
     end
   end

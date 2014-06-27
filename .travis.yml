@@ -24,10 +24,9 @@ install:
   - cd $TRAVIS_BUILD_DIR
   - sudo luarocks install lua-llthreads2
   - if [ $LUA = "luajit" ]; then
-      sudo luarocks install ljsyscall 0.9;
-      sudo luarocks install lzmq-ffi;
+      sudo luarocks install lzmq-ffi scm --server=http://rocks.moonscript.org/dev;
     else
-      sudo luarocks install lzmq;
+      sudo luarocks install lzmq scm --server=http://rocks.moonscript.org/dev;
     fi
   - sudo luarocks make rockspecs/parallel-scm-0.rockspec
 
