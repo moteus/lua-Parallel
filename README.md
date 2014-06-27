@@ -1,6 +1,9 @@
 lua-Parallel
 ============
 
+[![Build Status](https://travis-ci.org/moteus/lua-Parallel.svg?branch=master)](https://travis-ci.org/moteus/lua-Parallel)
+[![Licence](http://img.shields.io/badge/Licence-MIT-brightgreen.svg)](LICENSE)
+
 ##Status
 
 I can change anything.

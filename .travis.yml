@@ -1,13 +1,12 @@
-language: erlang
+language: c
 
 env:
   global:
-    - PLATFORM=linux
-    - LUAROCKS_VER=2.1.0
+    - LUAROCKS=2.2.0beta1
   matrix:
-    - LUA=lua5.1 ZMQ_VER=zeromq3 LUA_SFX=
-    - LUA=lua5.2 ZMQ_VER=zeromq3 LUA_SFX=
-    - LUA=luajit ZMQ_VER=zeromq3 LUA_SFX=jit
+    - LUA=lua5.1 ZMQ_VER=zeromq4
+    - LUA=lua5.2 ZMQ_VER=zeromq4
+    - LUA=luajit ZMQ_VER=zeromq4
 
 branches:
   only:
@@ -25,7 +24,7 @@ install:
   - cd $TRAVIS_BUILD_DIR
   - sudo luarocks install lua-llthreads2
   - if [ $LUA = "luajit" ]; then
-      sudo luarocks install https://raw2.github.com/justincormack/ljsyscall/master/rockspec/ljsyscall-0.9-1.rockspec;
+      sudo luarocks install ljsyscall 0.9;
       sudo luarocks install lzmq-ffi;
     else
       sudo luarocks install lzmq;
