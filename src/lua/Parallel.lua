@@ -279,7 +279,7 @@ local function ForEach(it, code, snk, N, C)
     snk, N, C = nil, snk, N
   end
 
-  return parallel_for_impl(code, wrap_iter(it), snk, N, C)
+  return parallel_for_impl(nil, code, wrap_iter(it), snk, N, C)
 end
 
 local function Invoke_impl(ctx, N, ...)
