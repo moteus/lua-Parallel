@@ -40,7 +40,7 @@ if [ "$LUAJIT" == "yes" ]; then
     git checkout v2.1;
   fi
 
-  make && sudo make install
+  make LIBS=-lpthread && sudo make install
 
   if [ "$LUA" == "luajit2.1" ]; then
     sudo ln -s /usr/local/bin/luajit-2.1.0-alpha /usr/local/bin/luajit
